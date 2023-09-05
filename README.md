@@ -10,3 +10,4 @@ cargo watch -x run
 - https://joeymckenzie.tech/blog/templates-with-rust-axum-htmx-askama/
 
 
+# razer

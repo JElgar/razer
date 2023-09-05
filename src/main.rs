@@ -10,13 +10,13 @@
 
 use std::sync::{Mutex, Arc};
 
-use axum::{Router, routing::{post, get}, response::IntoResponse, http::StatusCode};
+use axum::Router;
 use tower_http::services::ServeDir;
 use tracing::{info, Level};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{prelude::__tracing_subscriber_SubscriberExt, filter};
 // TODO Don't have the same name for the trait and macro!
-use razer::{AdminModel, RazerModel};
+use razer::{RazerModel, AdminRouter};
 
 struct AppState {
     my_classes: Mutex<Vec<MyClass>>,
@@ -34,32 +34,21 @@ struct MyClass {
 }
 
 #[async_trait::async_trait]
-impl RazerModel<AppState> for MyClass {
+impl RazerModel<Arc<AppState>> for MyClass {
     async fn list_values(
-        axum::extract::State(state): axum::extract::State<AppState>,
+        axum::extract::State(state): axum::extract::State<Arc<AppState>>,
     ) -> Vec<Self> {
         let lock = state.my_classes.lock().unwrap();
         lock.iter().cloned().collect()
     }
 
     async fn create_value(
-        axum::extract::State(state): axum::extract::State<AppState>,
+        axum::extract::State(state): axum::extract::State<Arc<AppState>>,
         input: Self,
     ) {
         let mut lock = state.my_classes.lock().unwrap();
         lock.push(input.clone());
     }
-}
-
-#[derive(serde::Serialize)]
-struct TestModel {
-    title: String,
-}
-
-async fn test_route(
-    axum::Form(input): axum::Form<TestModel>,
-) -> impl IntoResponse {
-    axum::extract::Json(TestModel { title: input.title })
 }
 
 // TODO When referencing this trait in the dervice, use the full path (e.g. razer::admin::AdminModel)
@@ -79,18 +68,17 @@ async fn main() -> anyhow::Result<()> {
         my_classes: Mutex::new(vec![]),
     });
 
-    let admin_route = Router::new()
-        .route("/create", post(MyClass::create_api_route))
-        .route("/create", get(MyClass::create_view_route))
-        .route("/list", get(MyClass::list_view_route));
+    let admin_router = AdminRouter::new()
+        .register::<MyClass>()
+        .build();
 
     let assets_path = std::env::current_dir().unwrap().join("assets");
     let router = Router::new()
-        .nest("/admin", admin_route)
-        .route("/test", get(test_route))
+        .nest("/admin", admin_router)
         .nest_service("/assets", ServeDir::new(assets_path))
         .with_state(app_state)
         .layer(TraceLayer::new_for_http());
+
     let port = 7654_u16;
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
 

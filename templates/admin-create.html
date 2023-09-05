@@ -5,7 +5,7 @@
 
 {% block content %}
 <form
-  hx-post="/admin/create"
+  hx-post="{{ create_endpoint }}"
   hx-target="#response"
   hx-swap="innerHTML"
   class="max-w-md"

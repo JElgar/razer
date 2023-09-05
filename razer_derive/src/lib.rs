@@ -61,23 +61,6 @@ pub fn admin_model_derive(input: TokenStream) -> TokenStream {
             fn model_name() -> String {
                 #model_name.to_string()
             }
-
-            // TODO Move these to different trait which is defined outside.
-            // Can porbbaly be automaticallyt derived for things like disel
-            async fn list_values(
-                axum::extract::State(state): axum::extract::State<std::sync::Arc<AppState>>,
-            ) -> Vec<Self> {
-                let lock = state.my_classes.lock().unwrap();
-                lock.iter().cloned().collect()
-            }
-
-            async fn create_value(
-                axum::extract::State(state): axum::extract::State<std::sync::Arc<AppState>>,
-                input: Self,
-            ) {
-                let mut lock = state.my_classes.lock().unwrap();
-                lock.push(input.clone());
-            }
         }
     }.into()
 }

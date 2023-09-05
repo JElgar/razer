@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use axum::{http::{StatusCode, HeaderMap}, extract::{State, self}, Form, response::IntoResponse, Router, routing::{post, get}};
 use askama::Template;
 use serde::de::DeserializeOwned;
@@ -17,16 +16,24 @@ pub struct FieldDef {
 }
 
 #[derive(Template)]
+#[template(path="admin.html")]
+pub struct AdminTemplate {
+    models: Vec<ModelInfo>
+}
+
+#[derive(Template)]
 #[template(path="admin-list.html")]
 pub struct AdminListTemplate {
     headers: Vec<&'static str>,
     rows: Vec<Vec<String>>,
+    create_view_route: String,
 }
 
 #[derive(Template)]
 #[template(path="admin-create.html")]
 pub struct AdminCreateTemplate {
     fields: Vec<FieldDef>,
+    create_endpoint: String,
 }
 
 pub struct HtmlTemplate<T>(T);
@@ -56,27 +63,42 @@ pub trait RazerModel<AppState: Send + Sync> where Self: serde::Serialize + Table
 }
 
 #[async_trait::async_trait]
-pub trait AdminModel: TableDataType where Self: serde::Serialize + TableDataType + Clone + Send + Sync {
-    type AppState: Send + Sync;
-
+pub trait AdminModel where Self: serde::Serialize + TableDataType + Clone + Send + Sync {
     fn get_field_definitions() -> Vec<FieldDef>;
     fn model_name() -> String;
 
-pub struct AdminRouter<TState> {
-    router: Router<TState>,
+    fn get_list_url() -> String {
+        format!("/admin/{}/list", Self::model_name())
+    }
+
+    fn get_create_url() -> String {
+        format!("/admin/{}/create", Self::model_name())
+    }
 }
 
-impl <TState: Send + Sync + Clone + 'static + serde::Serialize> AdminRouter<TState> {
-    pub fn new(state: TState) -> Self {
+#[derive(Clone)]
+struct ModelInfo {
+    pub name: String,
+    pub list_view_route: String,
+}
+
+pub struct AdminRouter<TState> {
+    router: Router<TState>,
+    models: Vec<ModelInfo>,
+}
+
+impl <TState: Send + Sync + Clone + 'static> AdminRouter<TState> {
+    pub fn new() -> Self {
         Self {
-            router: Router::new().with_state(state),
+            router: Router::new(),
+            models: Vec::new(),
         }
     }
 
     pub fn register<
         TModel: RazerModel<TState> + AdminModel + serde::Serialize + Clone + Send + Sync + DeserializeOwned + 'static>(mut self) -> Self {
         async fn create_api_route<
-            TState: Send + Sync + Clone + 'static + serde::Serialize,
+            TState: Send + Sync + Clone + 'static,
             TModel: AdminModel + RazerModel<TState> + Clone + Send + Sync + serde::Serialize + 'static + DeserializeOwned
         > (
             state: State<TState>,
@@ -90,7 +112,7 @@ impl <TState: Send + Sync + Clone + 'static + serde::Serialize> AdminRouter<TSta
             <TModel as RazerModel<TState>>::create_value(state, input.clone()).await;
 
             let mut headers = HeaderMap::new();
-            headers.insert("HX-Redirect", format!("/admin/{}/list", TModel::model_name()).parse().unwrap());
+            headers.insert("HX-Redirect", TModel::get_list_url().parse().unwrap());
             (
                 StatusCode::CREATED,
                 headers,
@@ -101,12 +123,13 @@ impl <TState: Send + Sync + Clone + 'static + serde::Serialize> AdminRouter<TSta
         async fn create_view_route<TModel: AdminModel>() -> HtmlTemplate<AdminCreateTemplate> {
             let template = AdminCreateTemplate {
                 fields: TModel::get_field_definitions(),
+                create_endpoint: TModel::get_create_url(),
             };
             HtmlTemplate(template)
         }
 
         async fn list_view_route<
-            TState: Send + Sync + Clone + 'static + serde::Serialize,
+            TState: Send + Sync + Clone + 'static,
             TModel: AdminModel + RazerModel<TState> + Clone + Send + Sync + serde::Serialize + 'static + DeserializeOwned
         >(
             state: State<TState>,
@@ -116,6 +139,7 @@ impl <TState: Send + Sync + Clone + 'static + serde::Serialize> AdminRouter<TSta
             let template = AdminListTemplate {
                 headers: TModel::get_headers(),
                 rows: values.iter().map(|value| value.get_row()).collect(),
+                create_view_route: TModel::get_create_url(),
             };
             HtmlTemplate(template)
         }
@@ -128,6 +152,21 @@ impl <TState: Send + Sync + Clone + 'static + serde::Serialize> AdminRouter<TSta
         self.router = self.router
             .nest(format!("/{}", TModel::model_name()).as_str(), router);
 
+        self.models.push(ModelInfo {
+            name: TModel::model_name(),
+            list_view_route: TModel::get_list_url(),
+        });
+
         self
+    }
+
+    pub fn build(self) -> Router<TState> {
+        self.router.route("/", get(|| async {
+            // TODO Remove as
+            let template = AdminTemplate {
+                models: self.models,
+            };
+            HtmlTemplate(template)
+        }))
     }
 }
