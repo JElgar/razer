@@ -30,7 +30,16 @@ struct AppState {
 struct MyClass {
     title: String,
     description: String,
+    other_field: String,
     number: u32,
+}
+
+// TODO
+struct MyDieselModel {
+    pub id: i32,
+    pub title: String,
+    pub body: String,
+    pub published: bool,
 }
 
 #[async_trait::async_trait]

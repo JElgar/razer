@@ -13,6 +13,12 @@ cargo watch -x run
 - [ ] UI
 - [ ] Would be nice to support other routers (other than axum)
 
+## TODO
+- Find out how to do partials/not have to provide all fields at the top level template
+- Create integration with diesel
+- Long Term: Create integrations with other orms/examples with sqlx
+- Long Term: Create integrations with other http frameworks
+
 ## Notes
 
 - https://joeymckenzie.tech/blog/templates-with-rust-axum-htmx-askama/

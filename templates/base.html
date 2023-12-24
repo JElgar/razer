@@ -7,15 +7,33 @@
     <title>{% block title %}{{ title }}{% endblock %}</title>
 
     <!-- htmx from the unpkg CDN - TODO Better options for prod deployment -->
-    <script src="https://unpkg.com/htmx.org@1.9.2"></script>
+	<!-- <script src="https://unpkg.com/htmx.org@1.9.2"></script> -->
+	<script src="/assets/htmx.min.js"></script>
+
 
     <!-- Allow any inheriting page to extend head with additional assets -->
     {% block head %}{% endblock %}
   </head>
-  <body>
-    <div id="content">
-      <!-- Inheriting pages will have their content rendered here, similar to app root in React, Angular, etc. -->
-      {% block content %}{% endblock %}
-    </div>
+  <body class="flex flex-row h-screen items-stretch">
+	 <aside
+      class="block sticky top-0 left-0 z-40 w-64 h-screen transition-transform -translate-x-full sm:translate-x-0 bg-gray-800"
+    >
+		<div class="flex flex-col font-medium space-y-2">
+			{% for model in models %}
+				<a href="{{ model.list_view_route }}" class="flex items-center p-2 rounded-lg text-white hover:bg-gray-700 w-full">
+					<span class="ml-3 text-white hover:bg-gray-700 w-full"> {{ model.name }} </span>
+				</a>
+			{% endfor %}
+		</div>
+	</aside>
+	<main class="main flex flex-col flex-grow ml-64 md:ml-0 transition-all duration-150 ease-in">
+		<header class="header bg-white shadow py-4 px-4">
+			<p> Admin </p>
+		</header>
+		<div class="content flex flex-col flex-grow p-4">
+    	  <!-- Inheriting pages will have their content rendered here, similar to app root in React, Angular, etc. -->
+    	  {% block content %}{% endblock %}
+    	</div>
+	</main>
   </body>
 </html>

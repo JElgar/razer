@@ -10,6 +10,10 @@ pub fn admin_model_derive(input: TokenStream) -> TokenStream {
     let struct_ident = &ast.ident;
     let model_name = &ast.ident.to_string();
 
+    // TODO It would be nice if we could implement a trait for these types
+    // I.e. some kind of trait for types which can be intoed to fields or something
+    // Note sure if thats possible but could be clean...
+
     let fields = match &ast.fields {
         syn::Fields::Named(fields) => &fields.named,
         _ => panic!("Only named fields are supported"),
