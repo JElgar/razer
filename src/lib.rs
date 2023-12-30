@@ -1,5 +1,6 @@
 use axum::{http::{StatusCode, HeaderMap}, extract::{State, self}, Form, response::IntoResponse, Router, routing::{post, get}};
 use askama::Template;
+use diesel::{Insertable, PgConnection, Table};
 use serde::de::DeserializeOwned;
 
 pub type TableHeaderData = &'static str;
@@ -52,23 +53,14 @@ impl<T: Template> IntoResponse for HtmlTemplate<T> {
     }
 }
 
+// TODO Rename to insertion model
 #[async_trait::async_trait]
-pub trait RazerModel<AppState: Send + Sync> where Self: serde::Serialize + TableDataType + Clone + Send + Sync {
-    async fn list_values(
-        state: State<AppState>,
-    ) -> Vec<Self>;
-
-    async fn create_value(
-        state: State<AppState>,
-        input: Self,
-    );
-}
-
-#[async_trait::async_trait]
-pub trait AdminModel where Self: serde::Serialize + TableDataType + Clone + Send + Sync {
+pub trait AdminModel: serde::Serialize + TableDataType + Clone + Send + Sync + 'static + DeserializeOwned {
     fn get_field_definitions() -> Vec<FieldDef>;
     fn model_name() -> String;
 
+    // Model and insertion model should be different traits
+    // TODO Readonly stuff should be in a different trait, implemented for the 
     fn get_list_url() -> String {
         format!("/admin/{}/list", Self::model_name())
     }
@@ -76,6 +68,22 @@ pub trait AdminModel where Self: serde::Serialize + TableDataType + Clone + Send
     fn get_create_url() -> String {
         format!("/admin/{}/create", Self::model_name())
     }
+}
+
+
+#[async_trait::async_trait]
+pub trait RazerModel<
+    AppState: Clone + Send + Sync + 'static,
+    InsertionModel: AdminModel,
+>: serde::Serialize + TableDataType + Clone + Send + Sync + 'static {
+    async fn list_values(
+        state: State<AppState>,
+    ) -> Vec<Self>;
+
+    async fn create_value(
+        state: State<AppState>,
+        input: InsertionModel,
+    ) -> Self;
 }
 
 #[derive(Clone, Debug)]
@@ -95,6 +103,82 @@ pub struct AdminRouter<TState> {
     models: Vec<ModelInfo<TState>>,
 }
 
+pub trait DieselState {
+    fn get_connection() -> PgConnection;
+}
+
+// impl <TState: DieselState> AdminRouter<TState> {
+//     pub fn register_diesel_model<T, TInsertable, TTable>(mut self, table: TTable) -> Self where TInsertable: Insertable<T> {
+//         let build = {
+//             |models: Vec<ModelViewInfo>, router: Router<TState>| {
+//                 async fn create_api_route<
+//                     TState: DieselState,
+//                 > (
+//                     state: State<TState>,
+//                     Form(input): Form<TModel>,
+//                 ) -> (
+//                     StatusCode,
+//                     HeaderMap,
+//                     extract::Json<TModel>
+//                 ) {
+//                     diesel::insert_into(my_models::table)
+//                         .values(&new_post)
+//                         .returning(MyDieselModel::as_returning())
+//                         .get_result(conn)
+//                         .expect("Error saving new post")
+// 
+//                     let mut headers = HeaderMap::new();
+//                     headers.insert("HX-Redirect", TModel::get_list_url().parse().unwrap());
+//                     (
+//                         StatusCode::CREATED,
+//                         headers,
+//                         axum::extract::Json(input)
+//                     )
+//                 }
+// 
+//                 let create_view_route = {
+//                     let models = models.clone();
+//                     || async {
+//                         let template = AdminCreateTemplate {
+//                             fields: TModel::get_field_definitions(),
+//                             create_endpoint: TModel::get_create_url(),
+//                             models,
+//                         };
+//                         HtmlTemplate(template)
+//                     }
+//                 };
+// 
+//                 let list_view_route = |state: State<TState>| async {
+//                     let values = TModel::list_values(state).await;
+//                     let template = AdminListTemplate {
+//                         headers: TModel::get_headers(),
+//                         rows: values.iter().map(|value| value.get_row()).collect(),
+//                         create_view_route: TModel::get_create_url(),
+//                         models,
+//                     };
+//                     HtmlTemplate(template)
+//                 };
+// 
+//                 let nested_router = Router::<TState>::new()
+//                     .route("/create", get(create_view_route))
+//                     .route("/create", post(create_api_route::<TState, TModel>))
+//                     .route("/list", get(list_view_route));
+// 
+//                 router.nest(format!("/{}", TModel::model_name()).as_str(), nested_router)
+// 
+//             }
+//         };
+// 
+//         self.models.push(ModelInfo {
+//             name: TModel::model_name(),
+//             list_view_route: TModel::get_list_url(),
+//             build: Box::new(build),
+//         });
+// 
+//         self
+//     }
+// }
+
 impl <TState: Send + Sync + Clone + 'static> AdminRouter<TState> {
     pub fn new() -> Self {
         Self {
@@ -104,30 +188,32 @@ impl <TState: Send + Sync + Clone + 'static> AdminRouter<TState> {
     }
 
     pub fn register<
-        TModel: RazerModel<TState> + AdminModel + serde::Serialize + Clone + Send + Sync + DeserializeOwned + 'static
+        TModel: RazerModel<TState, TInsertionModel>,
+        TInsertionModel: AdminModel,
     >(mut self) -> Self {
 
         let build = {
             |models: Vec<ModelViewInfo>, router: Router<TState>| {
                 async fn create_api_route<
                     TState: Send + Sync + Clone + 'static,
-                    TModel: AdminModel + RazerModel<TState> + Clone + Send + Sync + serde::Serialize + 'static + DeserializeOwned
+                    TModel: RazerModel<TState, TInsertionModel>,
+                    TInsertionModel: AdminModel,
                 > (
                     state: State<TState>,
-                    Form(input): Form<TModel>,
+                    Form(input): Form<TInsertionModel>,
                 ) -> (
                     StatusCode,
                     HeaderMap,
                     extract::Json<TModel>
                 ) {
-                    TModel::create_value(state, input.clone()).await;
+                    let output = TModel::create_value(state, input.clone()).await;
 
                     let mut headers = HeaderMap::new();
-                    headers.insert("HX-Redirect", TModel::get_list_url().parse().unwrap());
+                    headers.insert("HX-Redirect", TInsertionModel::get_list_url().parse().unwrap());
                     (
                         StatusCode::CREATED,
                         headers,
-                        axum::extract::Json(input)
+                        axum::extract::Json(output)
                     )
                 }
 
@@ -135,8 +221,8 @@ impl <TState: Send + Sync + Clone + 'static> AdminRouter<TState> {
                     let models = models.clone();
                     || async {
                         let template = AdminCreateTemplate {
-                            fields: TModel::get_field_definitions(),
-                            create_endpoint: TModel::get_create_url(),
+                            fields: TInsertionModel::get_field_definitions(),
+                            create_endpoint: TInsertionModel::get_create_url(),
                             models,
                         };
                         HtmlTemplate(template)
@@ -148,7 +234,7 @@ impl <TState: Send + Sync + Clone + 'static> AdminRouter<TState> {
                     let template = AdminListTemplate {
                         headers: TModel::get_headers(),
                         rows: values.iter().map(|value| value.get_row()).collect(),
-                        create_view_route: TModel::get_create_url(),
+                        create_view_route: TInsertionModel::get_create_url(),
                         models,
                     };
                     HtmlTemplate(template)
@@ -156,17 +242,17 @@ impl <TState: Send + Sync + Clone + 'static> AdminRouter<TState> {
 
                 let nested_router = Router::<TState>::new()
                     .route("/create", get(create_view_route))
-                    .route("/create", post(create_api_route::<TState, TModel>))
+                    .route("/create", post(create_api_route::<TState, TModel, TInsertionModel>))
                     .route("/list", get(list_view_route));
 
-                router.nest(format!("/{}", TModel::model_name()).as_str(), nested_router)
+                router.nest(format!("/{}", TInsertionModel::model_name()).as_str(), nested_router)
 
             }
         };
 
         self.models.push(ModelInfo {
-            name: TModel::model_name(),
-            list_view_route: TModel::get_list_url(),
+            name: TInsertionModel::model_name(),
+            list_view_route: TInsertionModel::get_list_url(),
             build: Box::new(build),
         });
 
@@ -187,7 +273,6 @@ impl <TState: Send + Sync + Clone + 'static> AdminRouter<TState> {
         });
 
         self.router = self.router.route("/", get(|| async {
-            // TODO Remove as
             let template = AdminTemplate {
                 models: models_view_info,
             };

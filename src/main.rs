@@ -8,15 +8,21 @@
 //
 // https://github.com/silkenweb/silkenweb/blob/main/examples/htmx-axum/index.html
 
-use std::sync::{Mutex, Arc};
+use std::{sync::{Mutex, Arc}, env};
 
 use axum::Router;
+use diesel::prelude::*;
+use diesel::{Connection, Selectable, deserialize::Queryable};
+use dotenvy::dotenv;
 use tower_http::services::ServeDir;
 use tracing::{info, Level};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{prelude::__tracing_subscriber_SubscriberExt, filter};
 // TODO Don't have the same name for the trait and macro!
 use razer::{RazerModel, AdminRouter};
+use uuid::Uuid;
+
+mod schema;
 
 struct AppState {
     my_classes: Mutex<Vec<MyClass>>,
@@ -26,24 +32,43 @@ struct AppState {
 // based on the field type it can setup the form... Does that make sense maybe the form can do that
 // automatically if I just idk...?
 // #[derive(serde::Deserialize)]
+// TODO Split AdminModel -> InputModel and Model (table stuff)
 #[derive(PartialEq, Clone, serde::Deserialize, serde::Serialize, razer_derive::AdminModel)]
 struct MyClass {
+    id: String,
     title: String,
     description: String,
     other_field: String,
     number: u32,
 }
 
-// TODO
-struct MyDieselModel {
+#[derive(PartialEq, Clone, serde::Deserialize, serde::Serialize, razer_derive::AdminModel)]
+struct MyClassInput {
+    title: String,
+    description: String,
+    other_field: String,
+    number: u32,
+}
+
+#[derive(Queryable, Selectable)]
+#[diesel(table_name = crate::schema::my_models)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct MyDieselModel {
     pub id: i32,
     pub title: String,
     pub body: String,
     pub published: bool,
 }
 
+#[derive(Insertable)]
+#[diesel(table_name = crate::schema::my_models)]
+pub struct InsertMyDieselModel<'a> {
+    pub title: &'a str,
+    pub body: &'a str,
+}
+
 #[async_trait::async_trait]
-impl RazerModel<Arc<AppState>> for MyClass {
+impl RazerModel<Arc<AppState>, MyClassInput> for MyClass {
     async fn list_values(
         axum::extract::State(state): axum::extract::State<Arc<AppState>>,
     ) -> Vec<Self> {
@@ -53,11 +78,58 @@ impl RazerModel<Arc<AppState>> for MyClass {
 
     async fn create_value(
         axum::extract::State(state): axum::extract::State<Arc<AppState>>,
-        input: Self,
-    ) {
+        input: MyClassInput,
+    ) -> Self {
+        let data = MyClass {
+            id: Uuid::new_v4().to_string(),
+            title: input.title,
+            description: input.description,
+            other_field: input.other_field,
+            number: input.number,
+        };
         let mut lock = state.my_classes.lock().unwrap();
-        lock.push(input.clone());
+        lock.push(data.clone());
+        data
     }
+}
+
+pub fn establish_connection() -> PgConnection {
+    dotenv().ok();
+
+    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    PgConnection::establish(&database_url)
+        .unwrap_or_else(|_| panic!("Error connecting to {}", database_url))
+}
+
+fn test_query() {
+    use self::schema::my_models::dsl::*;
+
+    let connection = &mut establish_connection();
+    let results = my_models
+        .filter(published.eq(true))
+        .limit(5)
+        .select(MyDieselModel::as_select())
+        .load(connection)
+        .expect("Error loading posts");
+
+    println!("Displaying {} posts", results.len());
+    for post in results {
+        println!("{}", post.title);
+        println!("-----------\n");
+        println!("{}", post.body);
+    }
+}
+
+pub fn create_my_model(conn: &mut PgConnection, title: &str, body: &str) -> MyDieselModel {
+    use crate::schema::my_models;
+
+    let new_post = InsertMyDieselModel { title, body };
+
+    diesel::insert_into(my_models::table)
+        .values(&new_post)
+        .returning(MyDieselModel::as_returning())
+        .get_result(conn)
+        .expect("Error saving new post")
 }
 
 // TODO When referencing this trait in the dervice, use the full path (e.g. razer::admin::AdminModel)
@@ -78,7 +150,7 @@ async fn main() -> anyhow::Result<()> {
     });
 
     let admin_router = AdminRouter::new()
-        .register::<MyClass>()
+        .register::<MyClass, MyClassInput>()
         .build();
 
     let assets_path = std::env::current_dir().unwrap().join("assets");
