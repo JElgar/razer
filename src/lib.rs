@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 pub type TableHeaderData = &'static str;
 pub type TableCellData = String;
-pub trait TableDataType: PartialEq {
+pub trait TableDataType {
     fn get_headers() -> Vec<TableHeaderData>;
     fn get_row(&self) -> Vec<TableCellData>;
 }
@@ -56,11 +56,11 @@ impl<T: Template> IntoResponse for HtmlTemplate<T> {
     }
 }
 
-pub trait AdminInputModel: serde::Serialize + DeserializeOwned + Clone + Send + Sync + 'static {
+pub trait AdminInputModel: serde::Serialize + DeserializeOwned + Send + Sync + 'static {
     fn get_field_definitions() -> Vec<FieldDef>;
 }
 
-pub trait AdminModel: serde::Serialize + TableDataType + Clone {
+pub trait AdminModel: serde::Serialize + TableDataType {
     fn model_name() -> &'static str;
 
     // Model and insertion model should be different traits
@@ -82,7 +82,7 @@ pub trait RazerModel<
 >: AdminModel {
     async fn list_values(
         state: State<AppState>,
-    ) -> Vec<Self>;
+    ) -> Vec<Self> where Self: Sized;
 
     async fn create_value(
         state: State<AppState>,
@@ -240,7 +240,7 @@ impl <TState: Send + Sync + Clone + 'static> AdminRouter<TState> {
     }
 
     fn _register<
-        TModel: serde::Serialize + TableDataType + Clone,
+        TModel: serde::Serialize + TableDataType,
         TInsertionModel: AdminInputModel,
         TCreateMethod: FnOnce(State<TState>, TInsertionModel) -> TCreateOutput + Send + Sync + Clone + 'static,
         TCreateOutput: Future<Output = ()> + Send,

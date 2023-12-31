@@ -70,7 +70,7 @@ struct MyClassInput {
     number: u32,
 }
 
-#[derive(Queryable, Selectable, Identifiable, serde::Serialize, PartialEq, Clone, AdminModel)]
+#[derive(Queryable, Selectable, Identifiable, serde::Serialize, AdminModel)]
 #[diesel(table_name = crate::schema::my_models)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct MyDieselModel {
@@ -80,7 +80,7 @@ pub struct MyDieselModel {
     pub published: bool,
 }
 
-#[derive(Insertable, serde::Deserialize, serde::Serialize, Clone, AdminInputModel)]
+#[derive(Insertable, serde::Deserialize, serde::Serialize, AdminInputModel)]
 #[diesel(table_name = crate::schema::my_models)]
 pub struct InsertMyDieselModel {
     pub title: String,
