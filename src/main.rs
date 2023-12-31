@@ -11,22 +11,42 @@
 use std::{sync::{Mutex, Arc}, env};
 
 use axum::Router;
-use diesel::prelude::*;
+use diesel::{prelude::*, associations::HasTable};
 use diesel::{Connection, Selectable, deserialize::Queryable};
 use dotenvy::dotenv;
+use razer_derive::{AdminModel, AdminInputModel};
 use tower_http::services::ServeDir;
 use tracing::{info, Level};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{prelude::__tracing_subscriber_SubscriberExt, filter};
 // TODO Don't have the same name for the trait and macro!
-use razer::{RazerModel, AdminRouter};
+use razer::{RazerModel, AdminRouter, DieselState};
 use uuid::Uuid;
 
 mod schema;
 
+#[derive(Clone)]
 struct AppState {
-    my_classes: Mutex<Vec<MyClass>>,
+    my_classes: Arc<Mutex<Vec<MyClass>>>,
 }
+
+impl DieselState for AppState {
+    type TConnection = PgConnection;
+
+    fn get_connection(&self) -> Self::TConnection {
+        PgConnection::establish(&dotenvy::var("DATABASE_URL").unwrap()).unwrap()
+    }
+}
+
+// type RealAppState = Arc<AppState>;
+
+// impl DieselState for RealAppState {
+//     type TConnection = PgConnection;
+// 
+//     fn get_connection(&self) -> Self::TConnection {
+//         PgConnection::establish(&dotenvy::var("DATABASE_URL").unwrap()).unwrap()
+//     }
+// }
 
 // Create a macro which iterates over the fields of the struct
 // based on the field type it can setup the form... Does that make sense maybe the form can do that
@@ -42,7 +62,7 @@ struct MyClass {
     number: u32,
 }
 
-#[derive(PartialEq, Clone, serde::Deserialize, serde::Serialize, razer_derive::AdminModel)]
+#[derive(PartialEq, Clone, serde::Deserialize, serde::Serialize, razer_derive::AdminInputModel)]
 struct MyClassInput {
     title: String,
     description: String,
@@ -50,7 +70,7 @@ struct MyClassInput {
     number: u32,
 }
 
-#[derive(Queryable, Selectable)]
+#[derive(Queryable, Selectable, Identifiable, serde::Serialize, PartialEq, Clone, AdminModel)]
 #[diesel(table_name = crate::schema::my_models)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct MyDieselModel {
@@ -60,11 +80,11 @@ pub struct MyDieselModel {
     pub published: bool,
 }
 
-#[derive(Insertable)]
+#[derive(Insertable, serde::Deserialize, serde::Serialize, Clone, AdminInputModel)]
 #[diesel(table_name = crate::schema::my_models)]
-pub struct InsertMyDieselModel<'a> {
-    pub title: &'a str,
-    pub body: &'a str,
+pub struct InsertMyDieselModel {
+    pub title: String,
+    pub body: String,
 }
 
 #[async_trait::async_trait]
@@ -102,11 +122,11 @@ pub fn establish_connection() -> PgConnection {
 }
 
 fn test_query() {
-    use self::schema::my_models::dsl::*;
+    use self::schema::my_models::dsl::{my_models, published};
 
     let connection = &mut establish_connection();
     let results = my_models
-        .filter(published.eq(true))
+        // .filter(published.eq(true))
         .limit(5)
         .select(MyDieselModel::as_select())
         .load(connection)
@@ -123,7 +143,7 @@ fn test_query() {
 pub fn create_my_model(conn: &mut PgConnection, title: &str, body: &str) -> MyDieselModel {
     use crate::schema::my_models;
 
-    let new_post = InsertMyDieselModel { title, body };
+    let new_post = InsertMyDieselModel { title: title.to_string(), body: body.to_string() };
 
     diesel::insert_into(my_models::table)
         .values(&new_post)
@@ -146,11 +166,12 @@ async fn main() -> anyhow::Result<()> {
     info!("Initalizing router");
 
     let app_state = Arc::new(AppState {
-        my_classes: Mutex::new(vec![]),
+        my_classes: Arc::new(Mutex::new(vec![])),
     });
 
     let admin_router = AdminRouter::new()
         .register::<MyClass, MyClassInput>()
+        .register_diesel_model::<MyDieselModel, InsertMyDieselModel>()
         .build();
 
     let assets_path = std::env::current_dir().unwrap().join("assets");

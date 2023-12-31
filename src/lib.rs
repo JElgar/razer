@@ -1,7 +1,10 @@
+use std::{pin::Pin, future::Future, fmt::format, sync::Arc};
+
 use axum::{http::{StatusCode, HeaderMap}, extract::{State, self}, Form, response::IntoResponse, Router, routing::{post, get}};
 use askama::Template;
-use diesel::{Insertable, PgConnection, Table};
+use diesel::{Insertable, PgConnection, Table, Queryable, Connection, backend::Backend, pg::Pg, connection::AnsiTransactionManager, QueryDsl, query_builder::{Query, AsQuery, QueryId, InsertStatement, ReturningClause}, query_dsl::methods::{FilterDsl, SelectDsl, LoadQuery, LimitDsl, ExecuteDsl}, Expression, Selectable, SelectableHelper, helper_types::{AsSelect, Select, Limit}, BelongingToDsl, associations::HasTable, QuerySource, SelectableExpression, expression::{ValidGrouping, MixedAggregates}, Identifiable};
 use serde::de::DeserializeOwned;
+use uuid::Uuid;
 
 pub type TableHeaderData = &'static str;
 pub type TableCellData = String;
@@ -53,29 +56,30 @@ impl<T: Template> IntoResponse for HtmlTemplate<T> {
     }
 }
 
-// TODO Rename to insertion model
-#[async_trait::async_trait]
-pub trait AdminModel: serde::Serialize + TableDataType + Clone + Send + Sync + 'static + DeserializeOwned {
+pub trait AdminInputModel: serde::Serialize + DeserializeOwned + Clone + Send + Sync + 'static {
     fn get_field_definitions() -> Vec<FieldDef>;
-    fn model_name() -> String;
+}
+
+pub trait AdminModel: serde::Serialize + TableDataType + Clone {
+    fn model_name() -> &'static str;
 
     // Model and insertion model should be different traits
     // TODO Readonly stuff should be in a different trait, implemented for the 
-    fn get_list_url() -> String {
-        format!("/admin/{}/list", Self::model_name())
-    }
+    // TODO Delete these
+    // fn get_list_url() -> String {
+    //     format!("/admin/{}/list", Self::model_name())
+    // }
 
-    fn get_create_url() -> String {
-        format!("/admin/{}/create", Self::model_name())
-    }
+    // fn get_create_url() -> String {
+    //     format!("/admin/{}/create", Self::model_name())
+    // }
 }
-
 
 #[async_trait::async_trait]
 pub trait RazerModel<
     AppState: Clone + Send + Sync + 'static,
-    InsertionModel: AdminModel,
->: serde::Serialize + TableDataType + Clone + Send + Sync + 'static {
+    InsertionModel: AdminInputModel,
+>: AdminModel {
     async fn list_values(
         state: State<AppState>,
     ) -> Vec<Self>;
@@ -88,14 +92,14 @@ pub trait RazerModel<
 
 #[derive(Clone, Debug)]
 struct ModelViewInfo {
-    pub name: String,
+    pub name: &'static str,
     pub list_view_route: String,
 }
 
 struct ModelInfo<TState> {
-    pub name: String,
+    pub name: &'static str,
     pub list_view_route: String,
-    pub build: Box<dyn Fn(Vec<ModelViewInfo>, Router<TState>) -> Router<TState>>,
+    pub build: Box<dyn FnOnce(Vec<ModelViewInfo>, Router<TState>) -> Router<TState>>,
 }
 
 pub struct AdminRouter<TState> {
@@ -103,12 +107,60 @@ pub struct AdminRouter<TState> {
     models: Vec<ModelInfo<TState>>,
 }
 
-pub trait DieselState {
-    fn get_connection() -> PgConnection;
+pub trait DieselState: Send + Sync + Clone + 'static {
+    type TConnection: Connection;
+    // fn get_connection() -> PgConnection<Backend = Pg>;
+    fn get_connection(&self) -> Self::TConnection;
 }
 
+// #[async_trait::async_trait]
+// impl <
+//     TConnectionST,
+//     TConnectionBackend: Backend,
+//     TConnection: Connection<Backend = TConnectionBackend>,
+//     TModel: AdminModel + Queryable<TConnectionST, TConnectionBackend>,
+//     TInsertable: Insertable<TModel> + AdminInputModel,
+//     TState: DieselState<TConnection>,
+//     TTable: Table
+// > RazerModel<TState, TInsertable> for DieselAdminModel<TTable> {
+//     async fn list_values(
+//         axum::extract::State(state): axum::extract::State<TState>,
+//     ) -> Vec<Self> {
+//         let connection = &mut establish_connection();
+//         let results = my_models
+//             .filter(published.eq(true))
+//             .limit(5)
+//             .select(MyDieselModel::as_select())
+//             .load(connection)
+//             .expect("Error loading posts");
+//     }
+// 
+//     async fn create_value(
+//         axum::extract::State(state): axum::extract::State<TState>,
+//         input: TInsertable,
+//     ) -> Self {
+//         todo!()
+//     }
+// }
+
+// impl <TState, TInsertionModel> RazerModel<TState, TInsertionModel> for TModel where TInsertionModel: AdminInputModel, TModel: AdminModel {
+//     async fn list_values() -> Vec<Self> {
+//         todo!()
+//     }
+// 
+//     async fn create_value(input: TInsertionModel) -> Self {
+//         todo!()
+//     }
+// }
+// 
 // impl <TState: DieselState> AdminRouter<TState> {
-//     pub fn register_diesel_model<T, TInsertable, TTable>(mut self, table: TTable) -> Self where TInsertable: Insertable<T> {
+//     pub fn register_diesel_model<TModel, TInsertable, TTable>(mut self, table: TTable) -> Self where TInsertable: Insertable<T> {
+//         impl RazerModel<TState, TInsertable> for TModel {
+//             fn list_values<'async_trait>(state:State<TState> ,) ->  core::pin::Pin<Box<dyn core::future::Future<Output = Vec<Self> > + core::marker::Send+'async_trait> >where Self:'async_trait {
+//                 todo!()
+//             }
+//         }
+// 
 //         let build = {
 //             |models: Vec<ModelViewInfo>, router: Router<TState>| {
 //                 async fn create_api_route<
@@ -187,54 +239,58 @@ impl <TState: Send + Sync + Clone + 'static> AdminRouter<TState> {
         }
     }
 
-    pub fn register<
-        TModel: RazerModel<TState, TInsertionModel>,
-        TInsertionModel: AdminModel,
-    >(mut self) -> Self {
+    fn _register<
+        TModel: serde::Serialize + TableDataType + Clone,
+        TInsertionModel: AdminInputModel,
+        TCreateMethod: FnOnce(State<TState>, TInsertionModel) -> TCreateOutput + Send + Sync + Clone + 'static,
+        TCreateOutput: Future<Output = TModel> + Send,
+        TListMethod: FnOnce(State<TState>) -> TListOutput + Send + Sync + Clone + 'static,
+        TListOutput: Future<Output = Vec<TModel>> + Send,
+    >(
+        mut self,
+        create_method: TCreateMethod,
+        list_method: TListMethod,
+        model_display_name: &'static str,
+    ) -> Self {
+        let list_url = format!("/admin/{}", model_display_name);
+        let create_url = format!("{}/create", list_url);
 
         let build = {
-            |models: Vec<ModelViewInfo>, router: Router<TState>| {
-                async fn create_api_route<
-                    TState: Send + Sync + Clone + 'static,
-                    TModel: RazerModel<TState, TInsertionModel>,
-                    TInsertionModel: AdminModel,
-                > (
-                    state: State<TState>,
-                    Form(input): Form<TInsertionModel>,
-                ) -> (
-                    StatusCode,
-                    HeaderMap,
-                    extract::Json<TModel>
-                ) {
-                    let output = TModel::create_value(state, input.clone()).await;
+            let list_url = list_url.clone();
+            let create_url = create_url.clone();
+
+            move |models: Vec<ModelViewInfo>, router: Router<TState>| {
+                let create_api_route = |state: State<TState>, Form(input): Form<TInsertionModel>| async move {
+                    let output = create_method(state, input).await;
 
                     let mut headers = HeaderMap::new();
-                    headers.insert("HX-Redirect", TInsertionModel::get_list_url().parse().unwrap());
+                    headers.insert("HX-Redirect", list_url.parse().unwrap());
                     (
                         StatusCode::CREATED,
                         headers,
                         axum::extract::Json(output)
                     )
-                }
+                };
 
                 let create_view_route = {
                     let models = models.clone();
-                    || async {
+                    let create_url = create_url.clone();
+                    || async move {
                         let template = AdminCreateTemplate {
                             fields: TInsertionModel::get_field_definitions(),
-                            create_endpoint: TInsertionModel::get_create_url(),
+                            create_endpoint: create_url.to_string(),
                             models,
                         };
                         HtmlTemplate(template)
                     }
                 };
 
-                let list_view_route = |state: State<TState>| async {
-                    let values = TModel::list_values(state).await;
+                let list_view_route = |state: State<TState>| async move {
+                    let values = list_method(state).await;
                     let template = AdminListTemplate {
                         headers: TModel::get_headers(),
                         rows: values.iter().map(|value| value.get_row()).collect(),
-                        create_view_route: TInsertionModel::get_create_url(),
+                        create_view_route: create_url.to_string(),
                         models,
                     };
                     HtmlTemplate(template)
@@ -242,43 +298,169 @@ impl <TState: Send + Sync + Clone + 'static> AdminRouter<TState> {
 
                 let nested_router = Router::<TState>::new()
                     .route("/create", get(create_view_route))
-                    .route("/create", post(create_api_route::<TState, TModel, TInsertionModel>))
-                    .route("/list", get(list_view_route));
+                    .route("/create", post(create_api_route))
+                    .route("/", get(list_view_route));
 
-                router.nest(format!("/{}", TInsertionModel::model_name()).as_str(), nested_router)
-
+                router.nest(format!("/{}", model_display_name).as_str(), nested_router)
             }
         };
 
+        println!("Registering {} at {}", model_display_name, list_url);
         self.models.push(ModelInfo {
-            name: TInsertionModel::model_name(),
-            list_view_route: TInsertionModel::get_list_url(),
+            name: model_display_name,
+            list_view_route: list_url.to_string(),
             build: Box::new(build),
         });
 
         self
     }
 
+    // TODO Allow overriding some things
+    // - path
+    // - model name
+    // probably not at register point though... Probably on the model with macro attributes
+    pub fn register<
+        TModel: RazerModel<TState, TInsertionModel> + 'static,
+        TInsertionModel: AdminInputModel,
+    >(self) -> Self {
+        self._register(
+            TModel::create_value,
+            TModel::list_values,
+            TModel::model_name(),
+        )
+    }
+
     pub fn build(mut self) -> Router<TState> {
         let models_view_info: Vec<ModelViewInfo> = self.models
             .iter()
             .map(|model| ModelViewInfo {
-                name: model.name.clone(),
+                name: model.name,
                 list_view_route: model.list_view_route.clone()
             })
             .collect();
 
-        self.router = self.models.iter().fold(self.router, |router, model| {
+        self.router = self.models.into_iter().fold(self.router, |router, model| {
             (model.build)(models_view_info.clone(), router)
         });
 
-        self.router = self.router.route("/", get(|| async {
+        self.router.route("/", get(|| async {
             let template = AdminTemplate {
                 models: models_view_info,
             };
             HtmlTemplate(template)
-        }));
+        }))
+    }
+}
 
-        self.router
+// struct TestModel;
+// impl TestModel {
+//     fn internal_get_by_id<
+//         TTable,
+//         C,
+//         TConnection: Connection,
+//     >(
+//         diesel_table: TTable,
+//         table_id: C,     
+//         conn: &TConnection,
+//         id: Uuid,
+//     ) -> Option<Self>
+//     where
+//         Self: Sized,
+//         TTable: Table + FilterDsl<diesel::dsl::Eq<C, Uuid>>,
+//         C: diesel::Column + Expression<SqlType = diesel::sql_types::Uuid>,
+//         diesel::dsl::Filter<TTable, diesel::dsl::Eq<C, Uuid>>: LimitDsl,
+//         diesel::dsl::Limit<diesel::dsl::Filter<TTable, diesel::dsl::Eq<C, Uuid>>>: LoadQuery<TConnection, Self>,
+//         Self: Queryable<diesel::dsl::SqlTypeOf<diesel::dsl::Limit<diesel::dsl::Filter<T, diesel::dsl::Eq<C, Uuid>>>>, TConnection::Backend>,
+//     {
+//         diesel_table
+//             .filter(table_id.eq(id))
+//             .first(conn.raw())
+//             .optional()
+//     }
+// }
+
+// trait DieselAdminRouter<
+//     TConnection: Connection,
+//     TState: DieselState<TConnection = TConnection>,
+// > {
+//     fn register_diesel_model<
+//         'query,
+//         TModel: AdminModel,
+//         TInsertable: AdminInputModel,
+//     >(self) -> Self
+//     where
+//         Self: Sized,
+//         TInsertable: Insertable<TModel>,
+//         TModel: HasTable + SelectableHelper<TConnection::Backend>,
+//         TModel::SelectExpression: QueryId,
+//         TModel::Table: SelectDsl<AsSelect<TModel, TConnection::Backend>> + LimitDsl,
+//         Select<TModel::Table, AsSelect<TModel, TConnection::Backend>>: LimitDsl + Table,
+//         Limit<Select<TModel::Table, AsSelect<TModel, TConnection::Backend>>>: LoadQuery<'query, TConnection, TModel>;
+// }
+
+impl <TConnection: Connection, TState: DieselState<TConnection = TConnection>> AdminRouter<TState> {
+    pub fn register_diesel_model<
+        'query,
+        TModel: AdminModel,
+        TInsertable: AdminInputModel,
+    >(self) -> Self where
+        Self: Sized,
+        TInsertable: Insertable<TModel::Table>,
+        TModel: HasTable + SelectableHelper<TConnection::Backend>,
+        TModel::SelectExpression: QueryId,
+        TModel::Table: SelectDsl<AsSelect<TModel, TConnection::Backend>> + LimitDsl,
+        Select<TModel::Table, AsSelect<TModel, TConnection::Backend>>: LimitDsl,
+        Limit<Select<TModel::Table, AsSelect<TModel, TConnection::Backend>>>: LoadQuery<'query, TConnection, TModel>,
+
+        // Insert
+        // TModel::SelectExpression: SelectableExpression<TModel::Table> + ValidGrouping<()>,
+        // <<TModel as Selectable<<TConnection as Connection>::Backend>>::SelectExpression as ValidGrouping<()>>::IsAggregate: MixedAggregates<diesel::expression::is_aggregate::No>,
+        // InsertStatement<TModel::Table, TInsertable::Values>: ExecuteDsl<TConnection> + Query,
+        // <<TModel as Selectable<<TConnection as Connection>::Backend>>::SelectExpression as ValidGrouping<()>>::IsAggregate: MixedAggregates<diesel::expression::is_aggregate::No>,
+        // InsertStatement<TModel::Table, TInsertable::Values, _, ReturningClause<AsSelect<TModel, TConnection::Backend>>>: ExecuteDsl<TConnection>,
+        // <<TModel as Selectable<<TConnection as Connection>::Backend>>::SelectExpression as ValidGrouping<()>>::IsAggregate: MixedAggregates<diesel::expression::is_aggregate::No>,
+    {
+        use diesel::RunQueryDsl;
+
+        let create_value = |state: State<TState>, input: TInsertable| async move {
+            let connection = &mut state.get_connection();
+            todo!();
+
+            // let a = diesel::insert_into(TModel::table())
+            //     .values(input)
+            //     .execute(connection);
+            
+            // let b = TModel::as_returning();
+            // let a = diesel::insert_into(TModel::table())
+            //     .values(input)
+            //     .returning(TModel::as_returning());
+
+            // a
+            //     .returning(TModel::as_returning())
+            //     .get_result(connection)
+            //     .expect("Error saving new post")
+        };
+
+        let list_values = |state: State<TState>| async move {
+            let connection = &mut state.get_connection();
+            let query = SelectDsl::select(
+                TModel::table(), TModel::as_select()
+            );
+            return LimitDsl::limit(query, 10).load(connection).expect("Failed query");
+        };
+
+        self._register(
+            create_value,
+            list_values,
+            TModel::model_name(),
+        )
+    }
+}
+
+impl<T: DieselState> DieselState for Arc<T> {
+    type TConnection = T::TConnection;
+
+    fn get_connection(&self) -> Self::TConnection {
+        self.as_ref().get_connection()
     }
 }
