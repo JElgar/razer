@@ -87,7 +87,7 @@ pub trait RazerModel<
     async fn create_value(
         state: State<AppState>,
         input: InsertionModel,
-    ) -> Self;
+    );
 }
 
 #[derive(Clone, Debug)]
@@ -243,7 +243,7 @@ impl <TState: Send + Sync + Clone + 'static> AdminRouter<TState> {
         TModel: serde::Serialize + TableDataType + Clone,
         TInsertionModel: AdminInputModel,
         TCreateMethod: FnOnce(State<TState>, TInsertionModel) -> TCreateOutput + Send + Sync + Clone + 'static,
-        TCreateOutput: Future<Output = TModel> + Send,
+        TCreateOutput: Future<Output = ()> + Send,
         TListMethod: FnOnce(State<TState>) -> TListOutput + Send + Sync + Clone + 'static,
         TListOutput: Future<Output = Vec<TModel>> + Send,
     >(
@@ -261,14 +261,14 @@ impl <TState: Send + Sync + Clone + 'static> AdminRouter<TState> {
 
             move |models: Vec<ModelViewInfo>, router: Router<TState>| {
                 let create_api_route = |state: State<TState>, Form(input): Form<TInsertionModel>| async move {
-                    let output = create_method(state, input).await;
+                    create_method(state, input).await;
 
                     let mut headers = HeaderMap::new();
                     headers.insert("HX-Redirect", list_url.parse().unwrap());
                     (
                         StatusCode::CREATED,
                         headers,
-                        axum::extract::Json(output)
+                        // axum::extract::Json(output)
                     )
                 };
 
@@ -413,32 +413,17 @@ impl <TConnection: Connection, TState: DieselState<TConnection = TConnection>> A
         Limit<Select<TModel::Table, AsSelect<TModel, TConnection::Backend>>>: LoadQuery<'query, TConnection, TModel>,
 
         // Insert
-        // TModel::SelectExpression: SelectableExpression<TModel::Table> + ValidGrouping<()>,
-        // <<TModel as Selectable<<TConnection as Connection>::Backend>>::SelectExpression as ValidGrouping<()>>::IsAggregate: MixedAggregates<diesel::expression::is_aggregate::No>,
-        // InsertStatement<TModel::Table, TInsertable::Values>: ExecuteDsl<TConnection> + Query,
-        // <<TModel as Selectable<<TConnection as Connection>::Backend>>::SelectExpression as ValidGrouping<()>>::IsAggregate: MixedAggregates<diesel::expression::is_aggregate::No>,
-        // InsertStatement<TModel::Table, TInsertable::Values, _, ReturningClause<AsSelect<TModel, TConnection::Backend>>>: ExecuteDsl<TConnection>,
-        // <<TModel as Selectable<<TConnection as Connection>::Backend>>::SelectExpression as ValidGrouping<()>>::IsAggregate: MixedAggregates<diesel::expression::is_aggregate::No>,
+        InsertStatement<TModel::Table, TInsertable::Values>: ExecuteDsl<TConnection>,
     {
         use diesel::RunQueryDsl;
 
         let create_value = |state: State<TState>, input: TInsertable| async move {
             let connection = &mut state.get_connection();
-            todo!();
-
-            // let a = diesel::insert_into(TModel::table())
-            //     .values(input)
-            //     .execute(connection);
-            
-            // let b = TModel::as_returning();
-            // let a = diesel::insert_into(TModel::table())
-            //     .values(input)
-            //     .returning(TModel::as_returning());
-
-            // a
-            //     .returning(TModel::as_returning())
-            //     .get_result(connection)
-            //     .expect("Error saving new post")
+            println!("Inserting into {}", TModel::model_name());
+            diesel::insert_into(TModel::table())
+                .values(input)
+                .execute(connection)
+                .expect("Failed insert");
         };
 
         let list_values = |state: State<TState>| async move {

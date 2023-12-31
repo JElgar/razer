@@ -99,7 +99,7 @@ impl RazerModel<Arc<AppState>, MyClassInput> for MyClass {
     async fn create_value(
         axum::extract::State(state): axum::extract::State<Arc<AppState>>,
         input: MyClassInput,
-    ) -> Self {
+    ) {
         let data = MyClass {
             id: Uuid::new_v4().to_string(),
             title: input.title,
@@ -109,7 +109,6 @@ impl RazerModel<Arc<AppState>, MyClassInput> for MyClass {
         };
         let mut lock = state.my_classes.lock().unwrap();
         lock.push(data.clone());
-        data
     }
 }
 
