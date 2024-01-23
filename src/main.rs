@@ -1,26 +1,17 @@
-// TODO Pick an orm and create a type
-//
-// TODO Pick an API framework and create an admin endpoint
-//
-// TODO Somehow generate admin page for the type
-// https://github.com/mitsuhiko/minijinja
-//
-//
-// https://github.com/silkenweb/silkenweb/blob/main/examples/htmx-axum/index.html
-
-use std::{sync::{Mutex, Arc}, env};
+use std::{
+    env,
+    sync::{Arc, Mutex},
+};
 
 use axum::Router;
-use diesel::{prelude::*, associations::HasTable};
-use diesel::{Connection, Selectable, deserialize::Queryable};
-use dotenvy::dotenv;
-use razer_derive::{AdminModel, AdminInputModel};
+use diesel::prelude::*;
+use diesel::{deserialize::Queryable, Connection, Selectable};
+use razer::{AdminRouter, DieselState, RazerModel};
+use razer_derive::{AdminInputModel, AdminModel};
 use tower_http::services::ServeDir;
-use tracing::{info, Level};
 use tower_http::trace::TraceLayer;
-use tracing_subscriber::{prelude::__tracing_subscriber_SubscriberExt, filter};
-// TODO Don't have the same name for the trait and macro!
-use razer::{RazerModel, AdminRouter, DieselState};
+use tracing::{info, Level};
+use tracing_subscriber::{filter, prelude::__tracing_subscriber_SubscriberExt};
 use uuid::Uuid;
 
 mod schema;
@@ -34,26 +25,13 @@ impl DieselState for AppState {
     type TConnection = PgConnection;
 
     fn get_connection(&self) -> Self::TConnection {
-        PgConnection::establish(&dotenvy::var("DATABASE_URL").unwrap()).unwrap()
+        let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+        PgConnection::establish(&database_url)
+            .unwrap_or_else(|_| panic!("Error connecting to {}", database_url))
     }
 }
 
-// type RealAppState = Arc<AppState>;
-
-// impl DieselState for RealAppState {
-//     type TConnection = PgConnection;
-// 
-//     fn get_connection(&self) -> Self::TConnection {
-//         PgConnection::establish(&dotenvy::var("DATABASE_URL").unwrap()).unwrap()
-//     }
-// }
-
-// Create a macro which iterates over the fields of the struct
-// based on the field type it can setup the form... Does that make sense maybe the form can do that
-// automatically if I just idk...?
-// #[derive(serde::Deserialize)]
-// TODO Split AdminModel -> InputModel and Model (table stuff)
-#[derive(PartialEq, Clone, serde::Deserialize, serde::Serialize, razer_derive::AdminModel)]
+#[derive(Clone, serde::Deserialize, serde::Serialize, AdminModel)]
 struct MyClass {
     id: String,
     title: String,
@@ -62,7 +40,8 @@ struct MyClass {
     number: u32,
 }
 
-#[derive(PartialEq, Clone, serde::Deserialize, serde::Serialize, razer_derive::AdminInputModel)]
+// TODO Use field attributes to set these rather than writing input class separately
+#[derive(serde::Deserialize, serde::Serialize, AdminInputModel)]
 struct MyClassInput {
     title: String,
     description: String,
@@ -112,52 +91,12 @@ impl RazerModel<Arc<AppState>, MyClassInput> for MyClass {
     }
 }
 
-pub fn establish_connection() -> PgConnection {
-    dotenv().ok();
-
-    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    PgConnection::establish(&database_url)
-        .unwrap_or_else(|_| panic!("Error connecting to {}", database_url))
-}
-
-fn test_query() {
-    use self::schema::my_models::dsl::{my_models, published};
-
-    let connection = &mut establish_connection();
-    let results = my_models
-        // .filter(published.eq(true))
-        .limit(5)
-        .select(MyDieselModel::as_select())
-        .load(connection)
-        .expect("Error loading posts");
-
-    println!("Displaying {} posts", results.len());
-    for post in results {
-        println!("{}", post.title);
-        println!("-----------\n");
-        println!("{}", post.body);
-    }
-}
-
-pub fn create_my_model(conn: &mut PgConnection, title: &str, body: &str) -> MyDieselModel {
-    use crate::schema::my_models;
-
-    let new_post = InsertMyDieselModel { title: title.to_string(), body: body.to_string() };
-
-    diesel::insert_into(my_models::table)
-        .values(&new_post)
-        .returning(MyDieselModel::as_returning())
-        .get_result(conn)
-        .expect("Error saving new post")
-}
-
-// TODO When referencing this trait in the dervice, use the full path (e.g. razer::admin::AdminModel)
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let filter = filter::Targets::new()
-      .with_target("tower_http::trace::on_response", Level::TRACE)
-      .with_target("tower_http::trace::on_request", Level::TRACE)
-      .with_default(Level::INFO);
+        .with_target("tower_http::trace::on_response", Level::TRACE)
+        .with_target("tower_http::trace::on_request", Level::TRACE)
+        .with_default(Level::INFO);
 
     let subscriber = tracing_subscriber::FmtSubscriber::new().with(filter);
     tracing::subscriber::set_global_default(subscriber)?;

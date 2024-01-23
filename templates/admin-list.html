@@ -4,25 +4,41 @@
 {% block title %}Admin{% endblock %}
 
 {% block content %}
-<a href="/admin"><h1 class="font-bold text-indigo-500">Admin</h1></a>
-<a href="{{ create_view_route }}"> Create </a>
-<table class="table-auto">
-  <thead>
-    <tr>
-      {% for header in headers %}
-        <th>{{ header }}</th>
-      {% endfor %}
-    </tr>
-  </thead>
-  <tbody>
-    {% for row in rows %}
-		<tr>
-			{% for value in row %}
-				<td>{{ value }}</td>
-			{% endfor %}
-    	</tr>
-    {% endfor %}
-  </tbody>
-</table>
-{% endblock %}
 
+<div class="flex flex-col items-end">
+  <a href="{{ create_view_route }}">
+    <button type="button" class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800">Create</button>
+  </a>
+  <div class="overflow-x-auto shadow-md sm:rounded-lg">
+    <table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
+      <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
+        <tr>
+          {% for col in columns %}
+            <th class="px-6 py-4">{{ col.display_name }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+    		<tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+    			{% for value in row %}
+					<td class="px-6 py-4">
+						{% if columns[loop.index0].attribute_type == "boolean" %}
+							{% if value == "true" %}
+								<span class="bg-green-100 text-green-800 text-xs font-medium me-2 px-2.5 py-0.5 rounded-full dark:bg-green-900 dark:text-green-300">True</span>
+							{% else %}
+								<span class="bg-red-100 text-red-800 text-xs font-medium me-2 px-2.5 py-0.5 rounded-full dark:bg-red-900 dark:text-red-300">False</span>
+							{% endif %}
+						{% else %}
+							{{ value }}
+						{% endif %}
+					</td>
+    			{% endfor %}
+        	</tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

@@ -22,3 +22,5 @@ cargo watch -x run
 ## Notes
 
 - https://joeymckenzie.tech/blog/templates-with-rust-axum-htmx-askama/
+- https://github.com/mitsuhiko/minijinja
+- https://github.com/silkenweb/silkenweb/blob/main/examples/htmx-axum/index.html
