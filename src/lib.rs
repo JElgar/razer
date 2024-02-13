@@ -282,7 +282,7 @@ impl<TConnection: Connection, TState: DieselState<TConnection = TConnection>> Ad
         let list_values = |state: State<TState>| async move {
             let connection = &mut state.get_connection();
             let query = SelectDsl::select(TModel::table(), TModel::as_select());
-            return LimitDsl::limit(query, 10)
+            return LimitDsl::limit(query, 100)
                 .load(connection)
                 .expect("Failed query");
         };
