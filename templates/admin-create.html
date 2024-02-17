@@ -11,16 +11,41 @@
   class="max-w-md"
 >
   {% for field in fields %}
-  <label for="{{ field.attribute_name }}" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">
-	  {{ field.display_name }}
-  </label>
-    <input
-	  type="{{ field.attribute_type }}"
-	  name="{{ field.attribute_name }}"
-      id="{{ field.attribute_name }}"
-      class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
-	  placeholder="{{ field.display_name }}"
-    />
+    {% match field %}
+	  {% when FieldDef::Text with (config) %}
+        <label for="{{ config.attribute_name }}" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">
+            {{ config.display_name }}
+        </label>
+        <input
+	      type="string"
+	      name="{{ config.attribute_name }}"
+          id="{{ config.attribute_name }}"
+          class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+	      placeholder="{{ config.display_name }}"
+        />
+	  {% when FieldDef::Number with (config) %}
+        <label for="{{ config.attribute_name }}" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">
+            {{ config.display_name }}
+        </label>
+        <input
+	      type="number"
+	      name="{{ config.attribute_name }}"
+          id="{{ config.attribute_name }}"
+          class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+	      placeholder="{{ config.display_name }}"
+        />
+	  {% when FieldDef::Boolean with (config) %}
+        <label for="{{ config.attribute_name }}" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">
+            {{ config.display_name }}
+        </label>
+        <input
+	      type="boolean"
+	      name="{{ config.attribute_name }}"
+          id="{{ config.attribute_name }}"
+          class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+	      placeholder="{{ config.display_name }}"
+        />
+    {% endmatch %}
   {% endfor %}
 
   <!-- TODO Work out why back ground color isn't coming from apply -->

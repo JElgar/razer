@@ -49,7 +49,7 @@ struct MyClassInput {
     number: u32,
 }
 
-#[derive(Queryable, Selectable, Identifiable, serde::Serialize, AdminModel)]
+#[derive(Queryable, Selectable, Identifiable, serde::Serialize, serde::Deserialize, AdminModel)]
 #[diesel(table_name = crate::schema::my_models)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct MyDieselModel {
@@ -68,6 +68,8 @@ pub struct InsertMyDieselModel {
 
 #[async_trait::async_trait]
 impl RazerModel<Arc<AppState>, MyClassInput> for MyClass {
+    type IdType = String;
+
     async fn list_values(
         axum::extract::State(state): axum::extract::State<Arc<AppState>>,
     ) -> Vec<Self> {
@@ -89,6 +91,26 @@ impl RazerModel<Arc<AppState>, MyClassInput> for MyClass {
         let mut lock = state.my_classes.lock().unwrap();
         lock.push(data.clone());
     }
+
+    async fn get_value(
+        axum::extract::State(state): axum::extract::State<Arc<AppState>>,
+        input: String,
+    ) -> Self {
+        let lock = state.my_classes.lock().unwrap();
+        lock.iter().find(|x| x.id == input).cloned().unwrap()
+    }
+}
+
+fn diesel_test() {
+    use self::schema::my_models::dsl::{ my_models };
+    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    let mut connection = PgConnection::establish(&database_url)
+        .unwrap_or_else(|_| panic!("Error connecting to {}", database_url));
+
+    my_models.find(123)
+        .select(MyDieselModel::as_select())
+        .first(&mut connection)
+        .optional();
 }
 
 #[tokio::main]

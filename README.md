@@ -6,6 +6,13 @@
 pnpm dlx tailwindcss -i styles/tailwind.css -o assets/main.css --watch
 cargo watch -x run
 ```
+
+## Modules
+
+### Admin
+
+- Should be possible to use with existing orms and custom implementation of get, list, update.
+
 ## TODO
 - [ ] Split stored type with input type (Similar to Insertable logic in diesel - so saved type does not have to match inserted type)
 - [ ] Crate adapter for at least 1 ORM (maybe start with diesel)
