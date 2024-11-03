@@ -35,19 +35,21 @@
           id="{{ config_with_def.field_config.attribute_name }}"
           class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
 	      placeholder="{{ config_with_def.field_config.display_name }}"
-		  value="{{ config_with_def.value }}"
+		  value={{ config_with_def.value }}
         />
 	  {% when FieldValue::Boolean with (config_with_def) %}
         <label for="{{ config_with_def.field_config.attribute_name }}" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">
             {{ config_with_def.field_config.display_name }}
         </label>
         <input
-	      type="boolean"
+	      type="checkbox"
 	      name="{{ config_with_def.field_config.attribute_name }}"
           id="{{ config_with_def.field_config.attribute_name }}"
-          class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+          class="block rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
 	      placeholder="{{ config_with_def.field_config.display_name }}"
-		  value="{{ config_with_def.value }}"
+		  {% if config_with_def.value == true %}
+			checked
+		  {% endif %}
         />
     {% endmatch %}
   {% endfor %}
@@ -57,7 +59,7 @@
     type="submit"
 	class="dark:bg-blue-600"
   >
-    Create
+    Save
   </button>
 </form>
 

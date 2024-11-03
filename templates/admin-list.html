@@ -20,22 +20,24 @@
       </thead>
       <tbody>
         {% for row in rows %}
-    		<tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
-    			{% for value in row %}
-					<td class="px-6 py-4">
-						{% match columns[loop.index0] %}
-							{% when FieldDef::Boolean with (config) %}
-								{% if value == "true" %}
-									<span class="bg-green-100 text-green-800 text-xs font-medium me-2 px-2.5 py-0.5 rounded-full dark:bg-green-900 dark:text-green-300">True</span>
+			<a>
+				<tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+    				{% for value in row %}
+						<td class="px-6 py-4">
+							{% match columns[loop.index0] %}
+								{% when FieldDef::Boolean with (config) %}
+									{% if value == "true" %}
+										<span class="bg-green-100 text-green-800 text-xs font-medium me-2 px-2.5 py-0.5 rounded-full dark:bg-green-900 dark:text-green-300">True</span>
+									{% else %}
+										<span class="bg-red-100 text-red-800 text-xs font-medium me-2 px-2.5 py-0.5 rounded-full dark:bg-red-900 dark:text-red-300">False</span>
+									{% endif %}
 								{% else %}
-									<span class="bg-red-100 text-red-800 text-xs font-medium me-2 px-2.5 py-0.5 rounded-full dark:bg-red-900 dark:text-red-300">False</span>
-								{% endif %}
-							{% else %}
-								{{ value }}
-						{% endmatch %}
-					</td>
-    			{% endfor %}
-        	</tr>
+									{{ value }}
+							{% endmatch %}
+						</td>
+    				{% endfor %}
+        		</tr>
+			</a>
         {% endfor %}
       </tbody>
     </table>

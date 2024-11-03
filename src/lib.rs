@@ -131,7 +131,7 @@ enum FieldType {
 }
 
 #[async_trait::async_trait]
-pub trait RazerModel<AppState: Clone + Send + Sync + 'static, InsertionModel: AdminInputModel>:
+pub trait RazerModel<AppState: Clone + Send + Sync + 'static, InsertionModel: AdminInputModel, UpdateModel: AdminInputModel>:
     AdminModel
 {
     type IdType: 'static + DeserializeOwned + Send;
@@ -141,6 +141,8 @@ pub trait RazerModel<AppState: Clone + Send + Sync + 'static, InsertionModel: Ad
         Self: Sized;
 
     async fn create_value(state: State<AppState>, input: InsertionModel);
+
+    async fn update_value(state: State<AppState>, input: UpdateModel);
 
     // TODO Does id make sense? Will this always be the identifier?
     async fn get_value(state: State<AppState>, id: Self::IdType) -> Self;
@@ -350,33 +352,26 @@ impl<TConnection: Connection, TState: DieselState<TConnection = TConnection>> Ad
         TInsertable: Insertable<TModel::Table>,
         TModel: HasTable + SelectableHelper<TConnection::Backend> + 'ident,
         &'ident TModel: Identifiable,
-        // TODO Have to make hander happy!
-        <&'ident TModel as Identifiable>::Id: Send + Deref + Clone,
-        // <<&'ident TModel as Identifiable>::Id as ToOwned>::Owned: DeserializeOwned,
-        // <&'ident TModel as Identifiable>::Id: Send + Deref,
-        // ModelId<'ident, TModel>: Deserialize<'ident> + Send,
-        for <'de> <<&'ident TModel as Identifiable>::Id as Deref>::Target: serde::Deserialize<'de> + Send,
-        // for <'de> <&'ident TModel as Identifiable>::Id: serde::Deserialize<'de>,
+        <&'ident TModel as Identifiable>::Id: Deref,
+        for <'de> ModelId<'ident, TModel>: serde::Deserialize<'de> + Send,
+
+        // List values
         TModel::SelectExpression: QueryId,
-        TModel::Table: FindDsl<<<&'ident TModel as Identifiable>::Id as Deref>::Target>,
+        TModel::Table: FindDsl<ModelId<'ident, TModel>>,
         TModel::Table: SelectDsl<AsSelect<TModel, TConnection::Backend>> + LimitDsl,
         Select<TModel::Table, AsSelect<TModel, TConnection::Backend>>: LimitDsl,
         Limit<Select<TModel::Table, AsSelect<TModel, TConnection::Backend>>>:
             LoadQuery<'query, TConnection, TModel>,
 
-        // <TModel::Table as FindDsl<
-        //     <<&'ident TModel as Identifiable>::Id as Deref>::Target
-        // >>::Output: SelectDsl<AsSelect<TModel, TConnection::Backend>>,
-
         // Get value
-        <<TModel as HasTable>::Table as FindDsl<<<&'ident TModel as Identifiable>::Id as Deref>::Target>>::Output:
+        <<TModel as HasTable>::Table as FindDsl<ModelId<'ident, TModel>>>::Output:
             SelectDsl<AsSelect<TModel, TConnection::Backend>>,
         Select<
-            <<TModel as HasTable>::Table as FindDsl<<<&'ident TModel as Identifiable>::Id as Deref>::Target>>::Output,
+            <<TModel as HasTable>::Table as FindDsl<ModelId<'ident, TModel>>>::Output,
             AsSelect<TModel, TConnection::Backend>,
         >: RunQueryDsl<TConnection> + LimitDsl,
         Limit<Select<
-            <<TModel as HasTable>::Table as FindDsl<<<&'ident TModel as Identifiable>::Id as Deref>::Target>>::Output,
+            <<TModel as HasTable>::Table as FindDsl<ModelId<'ident, TModel>>>::Output,
             AsSelect<TModel, TConnection::Backend>,
         >>: LoadQuery<'query, TConnection, TModel>,
 
@@ -401,7 +396,7 @@ impl<TConnection: Connection, TState: DieselState<TConnection = TConnection>> Ad
                 .expect("Failed query")
         };
 
-        let get_value = |state: State<TState>, id: <<&'ident TModel as Identifiable>::Id as Deref>::Target | async move {
+        let get_value = |state: State<TState>, id: ModelId<'ident, TModel> | async move {
             let connection = &mut state.get_connection();
             let query = FindDsl::find(TModel::table(), id);
             let query = SelectDsl::select(query, TModel::as_select());
