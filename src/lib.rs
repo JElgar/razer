@@ -1,3 +1,5 @@
+pub mod forms;
+
 use std::{future::Future, sync::Arc};
 
 use askama::Template;
@@ -142,7 +144,7 @@ pub trait RazerModel<AppState: Clone + Send + Sync + 'static, InsertionModel: Ad
 
     async fn create_value(state: State<AppState>, input: InsertionModel);
 
-    async fn update_value(state: State<AppState>, input: UpdateModel);
+    async fn update_value(state: State<AppState>, id: Self::IdType, input: UpdateModel);
 
     // TODO Does id make sense? Will this always be the identifier?
     async fn get_value(state: State<AppState>, id: Self::IdType) -> Self;
@@ -195,17 +197,17 @@ impl<TState: Send + Sync + Clone + 'static> AdminRouter<TState> {
         TModel: AdminModel,
         IdType: Send + 'static + DeserializeOwned,
         TInsertionModel: AdminInputModel,
-        TCreateMethod: FnOnce(State<TState>, TInsertionModel) -> TCreateOutput + Send + Sync + Clone + 'static,
-        TGetMethod: FnOnce(State<TState>, IdType) -> TGetOutput + Send + Sync + Clone + 'static,
+        TUpdateModel: AdminInputModel,
         TCreateOutput: Future<Output = ()> + Send,
-        TListMethod: FnOnce(State<TState>) -> TListOutput + Send + Sync + Clone + 'static,
         TListOutput: Future<Output = Vec<TModel>> + Send,
         TGetOutput: Future<Output = TModel> + Send,
+        TUpdateOutput: Future<Output = ()> + Send,
     >(
         mut self,
-        create_method: TCreateMethod,
-        list_method: TListMethod,
-        get_method: TGetMethod,
+        create_method: impl FnOnce(State<TState>, TInsertionModel) -> TCreateOutput + Send + Sync + Clone + 'static,
+        list_method: impl FnOnce(State<TState>) -> TListOutput + Send + Sync + Clone + 'static,
+        get_method: impl FnOnce(State<TState>, IdType) -> TGetOutput + Send + Sync + Clone + 'static,
+        update_method: impl FnOnce(State<TState>, IdType, TUpdateModel) -> TUpdateOutput + Send + Sync + Clone + 'static,
         model_display_name: &'static str,
     ) -> Self {
         // TODO implemeneted get api
@@ -300,8 +302,9 @@ impl<TState: Send + Sync + Clone + 'static> AdminRouter<TState> {
     // - model name
     // probably not at register point though... Probably on the model with macro attributes
     pub fn register<
-        TModel: RazerModel<TState, TInsertionModel> + 'static,
+        TModel: RazerModel<TState, TInsertionModel, TUpdateModel> + 'static,
         TInsertionModel: AdminInputModel,
+        TUpdateModel: AdminInputModel,
     >(
         self,
     ) -> Self {
@@ -309,6 +312,7 @@ impl<TState: Send + Sync + Clone + 'static> AdminRouter<TState> {
             TModel::create_value,
             TModel::list_values,
             TModel::get_value,
+            TModel::update_value,
             TModel::model_name(),
         )
     }
@@ -342,7 +346,7 @@ impl<TState: Send + Sync + Clone + 'static> AdminRouter<TState> {
 type ModelId<'ident, TModel> = <<&'ident TModel as Identifiable>::Id as Deref>::Target;
 
 impl<TConnection: Connection, TState: DieselState<TConnection = TConnection>> AdminRouter<TState> {
-    pub fn register_diesel_model<'query, 'ident, TModel: AdminModel, TInsertable: AdminInputModel>(
+    pub fn register_diesel_model<'query, 'ident, TModel: AdminModel, TInsertable: AdminInputModel, TUpdateModel: AdminInputModel>(
         self,
     ) -> Self
     where
@@ -404,6 +408,10 @@ impl<TConnection: Connection, TState: DieselState<TConnection = TConnection>> Ad
             result.unwrap().unwrap()
         };
 
-        self._register(create_value, list_values, get_value, TModel::model_name())
+        let update_value = |state: State<TState>, id: ModelId<'ident, TModel>, input: TUpdateModel| async move {
+            todo!()
+        };
+
+        self._register(create_value, list_values, get_value, update_value, TModel::model_name())
     }
 }

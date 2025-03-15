@@ -1,7 +1,9 @@
 use std::{
     env,
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
+
+use futures::lock::{ Mutex };
 
 use axum::Router;
 use diesel::prelude::*;
@@ -67,13 +69,13 @@ pub struct InsertMyDieselModel {
 }
 
 #[async_trait::async_trait]
-impl RazerModel<Arc<AppState>, MyClassInput> for MyClass {
+impl RazerModel<Arc<AppState>, MyClassInput, MyClassInput> for MyClass {
     type IdType = String;
 
     async fn list_values(
         axum::extract::State(state): axum::extract::State<Arc<AppState>>,
     ) -> Vec<Self> {
-        let lock = state.my_classes.lock().unwrap();
+        let lock = state.my_classes.lock().await;
         lock.iter().cloned().collect()
     }
 
@@ -88,16 +90,36 @@ impl RazerModel<Arc<AppState>, MyClassInput> for MyClass {
             other_field: input.other_field,
             number: input.number,
         };
-        let mut lock = state.my_classes.lock().unwrap();
+        let mut lock = state.my_classes.lock().await;
         lock.push(data.clone());
     }
 
     async fn get_value(
         axum::extract::State(state): axum::extract::State<Arc<AppState>>,
-        input: String,
+        id: String,
     ) -> Self {
-        let lock = state.my_classes.lock().unwrap();
-        lock.iter().find(|x| x.id == input).cloned().unwrap()
+        let lock = state.my_classes.lock().await;
+        lock.iter().find(|x| x.id == id).cloned().unwrap()
+    }
+
+    async fn update_value(
+        axum_state: axum::extract::State<Arc<AppState>>,
+        id: String,
+        input: MyClassInput,
+    ) {
+        let value = Self::get_value(axum_state.clone(), id.clone()).await;
+        let mut lock = axum_state.my_classes.lock().await;
+
+        lock.iter().find(|x| x.id == id).cloned().unwrap();
+        let idx = lock.iter().position(|x| x.id == id).unwrap();
+
+        lock[idx] = MyClass {
+            id: value.id,
+            title: input.title,
+            description: input.description,
+            other_field: input.other_field,
+            number: input.number,
+        };
     }
 }
 
@@ -130,8 +152,8 @@ async fn main() -> anyhow::Result<()> {
     });
 
     let admin_router = AdminRouter::new()
-        .register::<MyClass, MyClassInput>()
-        .register_diesel_model::<MyDieselModel, InsertMyDieselModel>()
+        .register::<MyClass, MyClassInput, MyClassInput>()
+        .register_diesel_model::<MyDieselModel, InsertMyDieselModel, InsertMyDieselModel>()
         .build();
 
     let assets_path = std::env::current_dir().unwrap().join("assets");
