@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <h1 class="text-3xl font-bold mb-8">{{ title }}</h1>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {% for resource in resources %}
+        <a href="/admin/{{ resource.path }}" class="block bg-white shadow-md rounded-lg p-6 hover:shadow-lg transition-shadow">
+            <h2 class="text-xl font-semibold text-gray-900">{{ resource.name }}</h2>
+            <p class="mt-2 text-sm text-gray-500">Manage {{ resource.name }}</p>
+        </a>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %} 

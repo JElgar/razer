@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-2xl font-bold">{{ resource_name }}</h1>
+        <a href="/admin/{{ resource_path }}/new" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded">
+            Add New
+        </a>
+    </div>
+
+    <div class="bg-white shadow-md rounded-lg overflow-hidden">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    {% for field in fields %}
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        {{ field }}
+                    </th>
+                    {% endfor %}
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Actions
+                    </th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                {% for item in items %}
+                <tr>
+                    {% for field in fields %}
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {{ item[field] }}
+                    </td>
+                    {% endfor %}
+                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <a href="/admin/{{ resource_path }}/{{ item["id"] }}/edit" class="text-blue-600 hover:text-blue-900 mr-4">
+                            Edit
+                        </a>
+                        <button onclick="deleteItem('{{ item["id"] }}')" class="text-red-600 hover:text-red-900">
+                            Delete
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+async function deleteItem(id) {
+    if (confirm('Are you sure you want to delete this item?')) {
+        try {
+            const response = await fetch(`/admin/{{ resource_path }}/${id}`, {
+                method: 'DELETE'
+            });
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                alert('Failed to delete item');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Failed to delete item');
+        }
+    }
+}
+</script>
+{% endblock %} 
