@@ -71,16 +71,21 @@ async fn main() {
                 Ok(item)
             })
         }),
-        // TODO Update this to generate a field config which is a struct from field name to field
-        // config. This allows users to update with
-        // field_configs: FieldConfig {
-        //  some_field: StringFieldConfig {
-        //    render: some_override,
-        //    ..MyModel::default_field_configs()
-        //  },
-        //  ..MyModel::default_field_configs()
-        // }
-        field_configs: MyModel::default_field_configs(),
+        // field_configs: MyModel::default_field_configs(),
+        // field_configs: MyModel::field_configs().into(),
+        field_configs: MyModelFieldConfigs {
+            is_adult: FieldConfig {
+                render: Arc::new(move |value| {
+                    Ok(render_toggle_widget(
+                        MyModel::field_configs().is_adult.field_id,
+                        MyModel::field_configs().is_adult.display_name,
+                        value,
+                    ))
+                }),
+                ..MyModel::field_configs().is_adult
+            },
+            ..MyModel::field_configs()
+        }.into(),
 
         // field_configs: vec![
         //     FieldConfig::create_number_config("id".to_string(), "Id".to_string(), true),

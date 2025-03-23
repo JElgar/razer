@@ -182,6 +182,13 @@ fn derive_admin_resource_impl(input: DeriveInput) -> Result<TokenStream, Compile
         }
     });
 
+    let field_configs_struct_assignments = struct_fields.clone().zip(field_config_defs.clone()).map(|(field, def)| {
+        let field_ident = field.name;
+        quote! {
+            #field_ident: #def
+        }
+    });
+
     let field_configs_struct_into = {
         let assignments = struct_fields.map(|field| {
             let field_ident = field.name;
@@ -202,16 +209,22 @@ fn derive_admin_resource_impl(input: DeriveInput) -> Result<TokenStream, Compile
     };
 
     Ok(quote! {
+        struct #field_configs_struct_ident {
+            #(#field_configs_struct_fields),*
+        }
+
         impl #struct_ident {
             fn default_field_configs() -> Vec<razer_core::FieldConfig> {
                 vec![
                     #(#field_config_defs),*
                 ]
             }
-        }
 
-        struct #field_configs_struct_ident {
-            #(#field_configs_struct_fields),*
+            fn field_configs() -> #field_configs_struct_ident  {
+                #field_configs_struct_ident {
+                    #(#field_configs_struct_assignments),*
+                }
+            }
         }
 
         #field_configs_struct_into
