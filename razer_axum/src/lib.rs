@@ -131,7 +131,7 @@ impl<TContext: Send + Sync + Clone + 'static> Into<Router> for AxumRouter<TConte
                             resource
                                 .field_configs
                                 .iter()
-                                .filter(|field_config| !field_config.read_only)
+                                .filter(|field_config| field_config.create_config.is_some())
                                 .map(|field| {
                                     // TODO Don't unwrap - render error page
                                     (field.render)(serde_json::Value::Null).unwrap()

@@ -1,3 +1,3 @@
 [workspace]
 resolver = "2"
-members = [ "examples/axum", "razer_axum","razer_core", "razer_ui"]
+members = [ "examples/axum", "razer_axum", "razer_core", "razer_core/razer_core_derive", "razer_ui"]

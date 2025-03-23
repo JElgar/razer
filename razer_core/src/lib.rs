@@ -233,9 +233,6 @@ pub struct FieldConfig {
     pub display_name: String,
     pub description: Option<String>,
     pub help_text: Option<String>,
-    pub read_only: bool,
-    // TODO We don't need to take a dep on askama here we can just take the html string raw (the
-    // serialized result)
     pub render: Arc<dyn Fn(serde_json::Value) -> Result<String, AdminError> + Send + Sync>,
 
     pub create_config: Option<CreateConfig>,
@@ -246,7 +243,6 @@ impl FieldConfig {
         Self {
             field_id: field_id.clone(),
             display_name: display_name.clone(),
-            read_only,
             help_text: None,
             description: None,
             render: Arc::new(move |value| {
@@ -273,7 +269,6 @@ impl FieldConfig {
         Self {
             field_id: field_id.clone(),
             display_name: display_name.clone(),
-            read_only,
             help_text: None,
             description: None,
             render: Arc::new(move |value| {
@@ -300,7 +295,6 @@ impl FieldConfig {
         Self {
             field_id: field_id.clone(),
             display_name: display_name.clone(),
-            read_only,
             help_text: None,
             description: None,
             render: Arc::new(move |value| {

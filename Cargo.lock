@@ -168,6 +168,7 @@ dependencies = [
  "futures",
  "razer_axum",
  "razer_core",
+ "razer_core_derive",
  "razer_ui",
  "serde",
  "serde_json",
@@ -540,11 +541,21 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "form_urlencoded",
+ "razer_core_derive",
  "razer_ui",
  "serde",
  "serde_json",
  "serde_path_to_error",
  "serde_urlencoded",
+]
+
+[[package]]
+name = "razer_core_derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

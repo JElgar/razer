@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 razer_core = { path = "../../razer_core" }
+razer_core_derive = { path = "../../razer_core/razer_core_derive" }
 razer_ui = { path = "../../razer_ui" }
 razer_axum = { path = "../../razer_axum" }
 
