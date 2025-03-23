@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block content %}
+<form
+  hx-post="{{ create_endpoint }}"
+  hx-target="#response"
+  hx-swap="innerHTML"
+  class="max-w-md"
+>
+  <div class="container mx-auto p-8">
+    <h1 class="text-3xl font-bold mb-8">Test</h1>
+    {% for field in fields %}
+      {{ field|safe }}
+    {% endfor %}
+  </div>
+  <button
+    type="submit"
+    class="dark:bg-blue-600"
+  >
+    Create
+  </button>
+</form>
+
+<div
+  id="response"
+/>
+{% endblock %}

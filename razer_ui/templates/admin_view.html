@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mx-auto p-8">
+    <h1 class="text-3xl font-bold mb-8">Test</h1>
+    {% for field in fields %}
+        {{ field|safe }}
+    {% endfor %}
+</div>
+{% endblock %}
